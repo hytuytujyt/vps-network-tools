@@ -34,7 +34,7 @@ if [ -z "${BASH_VERSION:-}" ]; then
   fi
   if [ -f "$0" ]; then exec bash "$0" "$@"; fi
   _bootstrap=$(mktemp /tmp/install-reality.XXXXXX) || exit 1
-  curl -fL --connect-timeout 10 -m 60 "${SCRIPT_URL:-https://raw.githubusercontent.com/hytuytujyt/script/main/install_reality.sh}" -o "$_bootstrap" || { rm -f "$_bootstrap"; exit 1; }
+  curl -fL --connect-timeout 10 -m 60 "${SCRIPT_URL:-https://raw.githubusercontent.com/hytuytujyt/vps-network-tools/main/install_reality.sh}" -o "$_bootstrap" || { rm -f "$_bootstrap"; exit 1; }
   exec bash "$_bootstrap" "$@"
 fi
 
