@@ -639,6 +639,27 @@ self_check() {
   while IFS= read -r node; do self_check_node "$node" || return 1; done < <(jq -c '.[]' <<< "$CLIENT_OUTBOUNDS")
 }
 
+enable_pubkey_auth() {
+  local conf=/etc/ssh/sshd_config bk tmp effective
+  [[ -s "$SSH_DIR/authorized_keys" ]] || { _warn2 'No authorized_keys; PubkeyAuthentication left unchanged.'; return 0; }
+  effective=$(sshd -T -f "$conf" 2>/dev/null | awk '$1=="pubkeyauthentication" {print $2; exit}') || true
+  [[ "$effective" != yes ]] || return 0
+  [[ -f "$conf" && ! -L "$conf" ]] || return 1
+  bk="$conf.bak-$(date +%Y%m%d%H%M%S)"
+  cp -p "$conf" "$bk" || return 1
+  tmp=$(mktemp /etc/ssh/.pubkey.XXXXXX) || return 1
+  { printf '%s\n' 'PubkeyAuthentication yes'; sed -E '/^[[:space:]]*PubkeyAuthentication[[:space:]]/d' "$conf"; } > "$tmp" || { rm -f "$tmp"; return 1; }
+  cat "$tmp" > "$conf"; rm -f "$tmp"
+  if ! sshd -t -f "$conf" || [[ $(sshd -T -f "$conf" | awk '$1=="pubkeyauthentication" {print $2; exit}') != yes ]]; then
+    cp -p "$bk" "$conf"; _warn2 'PubkeyAuthentication change failed; sshd_config restored.'; return 1
+  fi
+  if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then systemctl restart ssh || systemctl restart sshd
+  elif command -v rc-service >/dev/null; then rc-service sshd restart || rc-service ssh restart
+  elif command -v service >/dev/null; then service ssh restart || service sshd restart
+  else _warn2 'Cannot restart sshd; restart it manually to apply PubkeyAuthentication.'; return 1; fi
+  _info2 "PubkeyAuthentication enabled; sshd_config backup: $bk"
+}
+
 setup_ssh_key() {
   local key="$SSH_DIR/id_ed25519" pub="$SSH_DIR/id_ed25519.pub" auth="$SSH_DIR/authorized_keys" fresh backup derived public_line
   mkdir -p "$SSH_DIR" || return 1
@@ -1043,6 +1064,7 @@ main() {
     fi
   fi
   setup_ssh_key
+  enable_pubkey_auth || _warn2 'SSH public key login was not enabled automatically.'
   setup_alias
   _ok2 "Installation complete: MODE=$MODE. Read $CONFIG_DIR/node_output.txt or run shownode."
 }
