@@ -572,6 +572,9 @@ render_node_output() {
     printf '\nClash / Mihomo YAML\n'
     # JSON quoted scalars are also valid YAML, including unusual node names.
     jq -r --arg name "$NODE_NAME" '.[]|select(.tag=="reality-out")| "- name: \($name|tojson)\n  type: vless\n  server: \(.server|tojson)\n  port: \(.server_port)\n  uuid: \(.uuid|tojson)\n  flow: xtls-rprx-vision\n  tls: true\n  servername: \(.tls.server_name|tojson)\n  client-fingerprint: chrome\n  reality-opts:\n    public-key: \(.tls.reality.public_key|tojson)\n    short-id: \(.tls.reality.short_id|tojson)\n  network: tcp"' <<< "$CLIENT_OUTBOUNDS"
+    # Values only, in outbound key order; boolean flags such as enabled are omitted.
+    printf '\nReality plain values\n'
+    jq -r '.[]|select(.tag=="reality-out")| .. | scalars | select(type!="boolean")' <<< "$CLIENT_OUTBOUNDS"
   fi
   if [[ "$MODE" == ss ]]; then
     link="ss://$(printf '%s:%s' "$SS_METHOD" "$SS_PASSWORD" | base64 | tr -d '\r\n' | tr '+/' '-_' | tr -d '=')@$host:$LISTEN_PORT#$name"
