@@ -564,12 +564,11 @@ render_node_output() {
   [[ "$host" != *:* ]] || host="[$host]"
   name=$(uri_escape "$NODE_NAME")
   printf 'Node: %s\nMode: %s\n' "$NODE_NAME" "$MODE"
-  printf '%s\n' 'Rerun behavior: selected inbound credentials are regenerated; fixed SS_PASSWORD/HY2_PASSWORD/HY2_OBFS_PASSWORD overrides are retained. Other non-Argo inbounds are removed. Re-import the new client profile.'
+  printf '%s\n' 'Rerun behavior: every run regenerates credentials and replaces non-Argo inbounds. Re-import the new client profile.'
   if [[ "$MODE" == reality || "$MODE" == both ]]; then
     sni=$(uri_escape "$REALITY_SERVER_NAME")
     link="vless://$UUID@$host:$LISTEN_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$sni&fp=chrome&pbk=$PUBLIC_KEY&sid=$SHORT_ID&type=tcp#$name"
-    printf '\nReality URI\n%s\n\nReality outbound JSON\n' "$link"
-    jq '[.[]|select(.tag=="reality-out")]' <<< "$CLIENT_OUTBOUNDS" | render_outbound_snippets
+    printf '\nReality URI\n%s\n' "$link"
     printf '\nClash / Mihomo YAML\n'
     # JSON quoted scalars are also valid YAML, including unusual node names.
     jq -r --arg name "$NODE_NAME" '.[]|select(.tag=="reality-out")| "- name: \($name|tojson)\n  type: vless\n  server: \(.server|tojson)\n  port: \(.server_port)\n  uuid: \(.uuid|tojson)\n  flow: xtls-rprx-vision\n  tls: true\n  servername: \(.tls.server_name|tojson)\n  client-fingerprint: chrome\n  reality-opts:\n    public-key: \(.tls.reality.public_key|tojson)\n    short-id: \(.tls.reality.short_id|tojson)\n  network: tcp"' <<< "$CLIENT_OUTBOUNDS"
