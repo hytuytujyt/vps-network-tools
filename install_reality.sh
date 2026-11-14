@@ -1,5 +1,6 @@
 #!/bin/sh
-# sing-box node installer. MODE=reality (default), ss, hy2, both (Reality + HY2).
+# sing-box node installer. Run in a terminal with MODE and SERVER_IP unset to answer the
+# interactive questions. Otherwise MODE=reality (default), ss, hy2, both (Reality + HY2).
 # All node credentials rotate on each successful run unless a supported password
 # environment override is set. TLS pairs may be reused after OpenSSL checks.
 # SSH files are preserved by default. SSH_KEY_REGENERATE=1 backs up old key files
@@ -1018,10 +1019,144 @@ restart_detached() {
   exit 0
 }
 
+# Interactive setup. Runs only when neither MODE nor SERVER_IP is set and a terminal is
+# available (see main). Answers are exported under the same names the environment uses,
+# so the detached rerun inherits them and never prompts again.
+WIZARD_INPUT="${WIZARD_INPUT:-/dev/tty}"
+
+has_terminal() { { : < "$WIZARD_INPUT"; } 2>/dev/null; }
+
+ask_line() {
+  # ask_line PROMPT DEFAULT -> ANSWER. Enter accepts DEFAULT.
+  local line
+  if [[ -n "$2" ]]; then printf '%s [%s]: ' "$1" "$2" >&2; else printf '%s: ' "$1" >&2; fi
+  IFS= read -r -u 3 line || { fail '没有终端输入，无法交互；请设置 MODE 和 SERVER_IP 环境变量后非交互运行'; exit 1; }
+  ANSWER="${line:-$2}"
+}
+
+ask_valid() {
+  # ask_valid PROMPT DEFAULT CHECK -> ANSWER. CHECK prints the accepted value or fails.
+  local out
+  while :; do
+    ask_line "$1" "$2"
+    if out=$("$3" "$ANSWER"); then ANSWER="$out"; return 0; fi
+  done
+}
+
+check_mode() {
+  case "$1" in
+    1) printf 'reality\n' ;;
+    2) printf 'ss\n' ;;
+    3) printf 'hy2\n' ;;
+    4) printf 'both\n' ;;
+    *) fail '请输入 1-4'; return 1 ;;
+  esac
+}
+
+check_server_ip() { validate_host "$1" SERVER_IP && printf '%s\n' "$1"; }
+
+check_reality_name() {
+  if [[ -n "$1" ]]; then validate_host "$1" REALITY_SERVER_NAME || return 1; fi
+  printf '%s\n' "$1"
+}
+
+check_method() {
+  case "$1" in
+    aes-128-gcm|aes-256-gcm|chacha20-ietf-poly1305) printf '%s\n' "$1" ;;
+    *) fail '支持: aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305'; return 1 ;;
+  esac
+}
+
+check_hy2_ports() { ( normalize_hy2_ports "$1" ) && printf '%s\n' "$1"; }
+
+check_hop_mode() {
+  case "$1" in
+    1) printf 'local\n' ;;
+    2) printf 'external\n' ;;
+    *) fail '请输入 1 或 2'; return 1 ;;
+  esac
+}
+
+check_duration() {
+  [[ "$1" =~ ^[1-9][0-9]*[smh]$ ]] || { fail '跳跃间隔格式如 30s、5m、1h'; return 1; }
+  printf '%s\n' "$1"
+}
+
+check_obfs() {
+  case "$1" in
+    1) printf 'gecko\n' ;;
+    2) printf 'salamander\n' ;;
+    3) printf 'none\n' ;;
+    *) fail '请输入 1、2 或 3'; return 1 ;;
+  esac
+}
+
+check_sni() {
+  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { fail 'SNI 必须是不含空格的域名'; return 1; }
+  printf '%s\n' "$1"
+}
+
+random_port() { printf '%s\n' $((20000 + RANDOM % 30000)); }
+
+run_wizard() {
+  local detected_ip ss_pw
+  exec 3< "$WIZARD_INPUT" || return 1
+  printf '\n交互式配置（回车使用方括号里的默认值）\n' >&2
+  printf '  1) Reality\n  2) Shadowsocks\n  3) HY2 (Hysteria2)\n  4) Reality + HY2\n' >&2
+  ask_valid '选择模式' 1 check_mode; MODE=$ANSWER
+  detected_ip=$(curl -4 -fsS --connect-timeout 5 -m 8 https://api.ipify.org 2>/dev/null || true)
+  ask_valid '服务器公网 IP' "$detected_ip" check_server_ip; SERVER_IP=$ANSWER
+  ask_line '节点名称' "$MODE-$(hostname)"; NODE_NAME=$ANSWER
+
+  if [[ "$MODE" == reality || "$MODE" == both ]]; then
+    ask_valid 'Reality 本机监听 TCP 端口' "$(random_port)" normalize_port; ACTUAL_LISTEN_PORT=$ANSWER
+    ask_valid 'Reality 客户端连接端口（有 NAT 端口映射时才需要改）' "$ACTUAL_LISTEN_PORT" normalize_port; LISTEN_PORT=$ANSWER
+    ask_valid 'Reality 伪装域名（留空自动选择）' '' check_reality_name; REALITY_SERVER_NAME=$ANSWER
+  fi
+  if [[ "$MODE" == ss ]]; then
+    ask_valid 'SS 本机监听端口' "$(random_port)" normalize_port; ACTUAL_LISTEN_PORT=$ANSWER
+    ask_valid 'SS 客户端连接端口（有 NAT 端口映射时才需要改）' "$ACTUAL_LISTEN_PORT" normalize_port; LISTEN_PORT=$ANSWER
+    ask_valid 'SS 加密方式' aes-128-gcm check_method; SS_METHOD=$ANSWER
+    ask_line 'SS 密码（留空自动生成）' ''; SS_PASSWORD=$ANSWER
+  fi
+  if [[ "$MODE" == hy2 || "$MODE" == both ]]; then
+    ask_valid 'HY2 本机监听 UDP 端口' "$(random_port)" normalize_port; HY2_LISTEN_PORT=$ANSWER
+    ask_valid 'HY2 对外 UDP 端口或跳跃范围（如 443 或 20000-20100）' "$HY2_LISTEN_PORT" check_hy2_ports; HY2_SERVER_PORTS=$ANSWER
+    if [[ "$HY2_SERVER_PORTS" == *[-:,]* ]]; then
+      ask_valid '跳跃由谁处理（1 本机 nftables / 2 外部 NAT 映射）' 1 check_hop_mode; HY2_PORT_HOPPING_MODE=$ANSWER
+      ask_valid '跳跃间隔' 30s check_duration; HY2_HOP_INTERVAL=$ANSWER
+    fi
+    ask_valid 'HY2 混淆（1 gecko / 2 salamander / 3 none）' 1 check_obfs; HY2_OBFS=$ANSWER
+    ask_valid 'HY2 TLS 伪装 SNI' hy2.local check_sni; HY2_SNI=$ANSWER
+  fi
+
+  printf '\n--- 配置确认 ---\nMode: %s\nServer IP: %s\nNode name: %s\n' "$MODE" "$SERVER_IP" "$NODE_NAME" >&2
+  if [[ "$MODE" == reality || "$MODE" == both ]]; then
+    printf 'Reality: 本机端口 %s，客户端端口 %s，伪装域名 %s\n' "$ACTUAL_LISTEN_PORT" "$LISTEN_PORT" "${REALITY_SERVER_NAME:-自动选择}" >&2
+  fi
+  if [[ "$MODE" == ss ]]; then
+    ss_pw=${SS_PASSWORD:+自定义}; ss_pw=${ss_pw:-自动生成}
+    printf 'SS: 本机端口 %s，客户端端口 %s，加密 %s，密码 %s\n' "$ACTUAL_LISTEN_PORT" "$LISTEN_PORT" "$SS_METHOD" "$ss_pw" >&2
+  fi
+  if [[ "$MODE" == hy2 || "$MODE" == both ]]; then
+    printf 'HY2: 本机 UDP %s，对外 %s，混淆 %s，SNI %s\n' "$HY2_LISTEN_PORT" "$HY2_SERVER_PORTS" "$HY2_OBFS" "$HY2_SNI" >&2
+  fi
+  ask_line '确认开始安装？(y/n)' y
+  case "$ANSWER" in y|Y|yes|YES) ;; *) _info2 '已取消，没有做任何修改。'; exit 0 ;; esac
+  exec 3<&-
+  export MODE SERVER_IP NODE_NAME ACTUAL_LISTEN_PORT LISTEN_PORT REALITY_SERVER_NAME SS_METHOD SS_PASSWORD
+  export HY2_LISTEN_PORT HY2_SERVER_PORTS HY2_PORT_HOPPING_MODE HY2_HOP_INTERVAL HY2_OBFS HY2_SNI
+}
+
 main() {
   set -euo pipefail
   umask 077
   [[ "$(id -u)" == 0 ]] || { fail 'Run as root'; return 1; }
+  # Before the HUP trap below, so a disconnect during the questions simply ends the script.
+  if [[ "${INSTALL_DAEMONIZED:-0}" != 1 && -z "${MODE:-}" && -z "${SERVER_IP:-}" ]] && has_terminal; then
+    _cmd jq || install_packages jq
+    run_wizard
+  fi
   # Original disconnect behavior: rerun detached on HUP. A rerun regenerates
   # node defaults. The daemon writes directly to a private log (no tee pipe).
   INSTALL_LOG="${INSTALL_LOG:-/root/install_reality.log}"
