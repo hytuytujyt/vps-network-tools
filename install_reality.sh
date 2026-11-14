@@ -1,6 +1,6 @@
 #!/bin/sh
-# sing-box node installer. Run in a terminal with MODE and SERVER_IP unset to answer the
-# interactive questions. Otherwise MODE=reality (default), ss, hy2, both (Reality + HY2).
+# sing-box node installer. Interactive: run it in a terminal and answer the questions
+# (mode: reality, ss, hy2, or both = Reality + HY2).
 # All node credentials rotate on each successful run unless a supported password
 # environment override is set. TLS pairs may be reused after OpenSSL checks.
 # SSH files are preserved by default. SSH_KEY_REGENERATE=1 backs up old key files
@@ -1019,9 +1019,8 @@ restart_detached() {
   exit 0
 }
 
-# Interactive setup. Runs only when neither MODE nor SERVER_IP is set and a terminal is
-# available (see main). Answers are exported under the same names the environment uses,
-# so the detached rerun inherits them and never prompts again.
+# Interactive setup, the only flow. Answers are exported under the variable names the
+# installer uses, so the detached rerun (INSTALL_DAEMONIZED=1) inherits them and never prompts.
 WIZARD_INPUT="${WIZARD_INPUT:-/dev/tty}"
 
 has_terminal() { { : < "$WIZARD_INPUT"; } 2>/dev/null; }
@@ -1152,8 +1151,9 @@ main() {
   set -euo pipefail
   umask 077
   [[ "$(id -u)" == 0 ]] || { fail 'Run as root'; return 1; }
-  # Before the HUP trap below, so a disconnect during the questions simply ends the script.
-  if [[ "${INSTALL_DAEMONIZED:-0}" != 1 && -z "${MODE:-}" && -z "${SERVER_IP:-}" ]] && has_terminal; then
+  # Questions come before the HUP trap below, so a disconnect here simply ends the script.
+  if [[ "${INSTALL_DAEMONIZED:-0}" != 1 ]]; then
+    has_terminal || { fail '需要在终端中运行，脚本会交互式询问配置'; return 1; }
     _cmd jq || install_packages jq
     run_wizard
   fi
