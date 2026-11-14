@@ -8,6 +8,16 @@ curl -fsSL https://raw.githubusercontent.com/hytuytujyt/vps-network-tools/main/i
 
 `SERVER_IP` 必填，其余参数不填都有默认值。示例 IP `203.0.113.10` 换成自己的公网 IP。
 
+## 交互安装（推荐）
+
+不设置 `MODE` 和 `SERVER_IP` 直接运行，脚本会依次询问模式、IP、端口等参数，回车即用方括号里的默认值。最后显示配置摘要，确认后才开始安装；取消则不做任何修改。
+
+```sh
+sh /tmp/install_reality.sh
+```
+
+下面的环境变量写法仍然可用，适合脚本化重复部署。
+
 ## 选模式
 
 | MODE | 安装内容 | 传输 | 需要放行 |
