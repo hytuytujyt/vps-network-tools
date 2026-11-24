@@ -9,26 +9,9 @@ sh /tmp/install_reality.sh
 
 脚本会依次询问配置，回车使用方括号里的默认值。最后显示配置摘要，确认后才开始安装；取消则不做任何修改。脚本需要在终端中运行。
 
-## 问答流程
-
-1. 选模式：`1` REALITY、`2` Shadowsocks、`3` HY2、`4` REALITY + HY2
-2. 服务器公网 IP（自动探测，可修改）
-3. 节点名称（默认 `<模式>-<主机名>`）
-4. REALITY（模式 1、4）：本机监听端口、客户端连接端口、伪装域名（留空自动选择）
-5. Shadowsocks（模式 2）：本机监听端口、客户端连接端口、加密方式（默认 `aes-128-gcm`）、密码（留空自动生成）
-6. HY2（模式 3、4）：本机 UDP 端口、对外 UDP 端口或跳跃范围、跳跃处理方式和间隔（实际包含多个端口时询问）、混淆（默认 `gecko`）、证书方式（`1` 自签名 / `2` Let's Encrypt）、SNI（默认 `hy2.local`）；选 Let's Encrypt 时还会询问注册邮箱和 Cloudflare API 令牌（输入不显示）
-7. 确认摘要会分开列出本机 UDP 监听端口、云安全组应放行的公网 UDP 端口和负责转发的一方。核对后输入 `y` 开始安装。
-
-输入不合法时会就地重新提问。
-
 ## 端口规则
 
-- **本机端口**：脚本在 VPS 上实际监听的端口。
-- **客户端连接端口**：手机连接的端口。
-  - 普通 VPS：和本机端口填一样，在系统防火墙或云安全组放行。
-  - 商家 NAT：先在商家面板把公网端口映射到本机端口，再把映射后的公网端口填到这一项。
-
-HY2 的端口含义不同：
+HY2 端口：
 
 - **本机 UDP 端口**：本机实际监听的唯一 UDP 端口。
 - **对外 UDP 端口或跳跃范围**：手机连接的公网 UDP 端口，可以填单个端口（如 `443`）、范围（如 `30000-30005`）或逗号列表。手机在这些端口之间轮换，最终都落到同一个本机 UDP 端口。
@@ -44,7 +27,7 @@ HY2 的端口含义不同：
 shownode
 ```
 
-`shownode` 按当前服务端配置列出可以导出的 VLESS、Shadowsocks、HY2 出站片段。可以粘贴到 sing-box App 配置的 `outbounds` 数组里。每个对象都保留末尾逗号；如果粘贴后它是标准 JSON 数组的最后一项，请去掉最后一个逗号。若当前终端仍使用旧别名，重新登录，或直接执行 `/usr/local/bin/shownode`。
+`shownode` 按当前服务端配置列出可以导出的 VLESS、Shadowsocks、HY2 出站片段。若当前终端仍使用旧别名，重新登录，或直接执行 `/usr/local/bin/shownode`。
 
 旧节点的公网地址和映射端口不一定能从服务端配置恢复。`shownode` 会复用能匹配的旧客户端配置；缺少资料时在 stderr 提示，不猜地址或端口。若已经有可用的客户端 JSON，可以绑定到当前入站：
 
@@ -58,17 +41,15 @@ shownode --import argo-in /root/old-client.json 'Argo 节点名'
 
 ### HY2 安装检查
 
-默认只做第 ① 步：确认 sing-box 在预期地址和 UDP 端口监听。服务启动或监听失败时，先保存私有诊断文件，再尝试恢复原服务端配置。诊断路径会打印在终端，默认在 `/etc/sing-box/install-diagnostics.*`。
+诊断路径会打印在终端，默认在 `/etc/sing-box/install-diagnostics.*`。
 
-本机协议自检默认关闭，因为它要同时再启动一个临时 sing-box 客户端（HY2 还多一个 Python 测试服务），会额外占用几十 MB 内存，小内存机器上容易被系统杀掉。需要时在运行前加环境变量：
+本机协议自检默认关闭，需要时在运行前加环境变量：
 
 ```sh
 SELF_CHECK=1 sh /tmp/install_reality.sh
 ```
 
-开启后依次检查：② 临时客户端能否使用本机协议完成认证并访问回环测试服务（HY2）或直接访问外网（Reality、SS）；③ 能否经该协议访问外网 HTTPS。Reality、SS 以及 HY2 的第 ② 步失败会回滚；仅 HY2 第 ③ 步失败只告警，不回滚。本机检查不验证云安全组、外部 NAT 或公网跳跃端口。
-
-## Let's Encrypt 证书（HY2，可选）
+## Let's Encrypt 证书（HY2，推荐）
 
 证书方式选 `2` 后，脚本用 [acme.sh](https://github.com/acmesh-official/acme.sh) 通过 Cloudflare DNS 验证自动签发，不占用 80 端口，域名也不需要解析到本机。你只需要准备：
 
@@ -82,20 +63,6 @@ SELF_CHECK=1 sh /tmp/install_reality.sh
 - 令牌保存在 `/root/.secrets/cloudflare.ini` 和 acme.sh 自己的账户文件里，权限均为仅 root 可读。不再需要时请自行删除并在 Cloudflare 撤销令牌。
 - 默认从 acme.sh 的 `master` 分支下载。需要固定版本时，运行前设置 `ACME_SH_URL` 指向指定版本的源码压缩包。
 - 签发失败时先确认令牌权限、域名确实在该 Cloudflare 账户下，再重跑脚本。
-
-## 低流量 VPS 对比测试（独立工具）
-
-TcpQuality 广东低流量比较工具已拆分到独立公开仓库：[hytuytujyt/tcpquality-gd-compare](https://github.com/hytuytujyt/tcpquality-gd-compare)。该工具只测广东电信、移动 IPv4 普通/大包回程，以及 VPS → 广东的单线程下载；预算、安装流量、外联、系统依赖、操作流程和注意事项请查看该仓库自己的 README。它与本仓库的 sing-box 安装器是独立项目。
-
-### 快速安装
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/hytuytujyt/tcpquality-gd-compare/main/run.sh -o /root/tq-gd.sh
-chmod 700 /root/tq-gd.sh
-/root/tq-gd.sh baseline
-```
-
-后续按该工具 README 指引执行 `tune`、`after` 和 `compare`。
 
 ## 关闭 SSH 密码登录（可选，脚本不会自动做）
 
