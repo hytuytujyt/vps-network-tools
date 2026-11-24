@@ -37,18 +37,13 @@ SELF_CHECK=1 sh /tmp/install_reality.sh
 
 ## Let's Encrypt 证书（HY2，推荐）
 
-证书方式选 `2` 后，脚本用 [acme.sh](https://github.com/acmesh-official/acme.sh) 通过 Cloudflare DNS 验证自动签发，不占用 80 端口，域名也不需要解析到本机。你只需要准备：
-
-- 一个托管在 Cloudflare 的真实域名，填作 SNI（如 `hy2.example.com`）。
-- 一个 Cloudflare API 令牌，权限为 `Zone:DNS:Edit` 和 `Zone:Zone:Read`，范围限定到该域名所在的 Zone。
-
-脚本会自动完成：安装 acme.sh、签发 ECC 证书、安装到 `/etc/sing-box/le/<域名>/`（`fullchain.pem` 和 `privkey.pem`）、配置自动续期，续期后自动重启 sing-box。客户端使用系统根证书校验，不再内嵌证书。
-
-- acme.sh 是纯 shell 程序，只依赖 curl 和 openssl，内存占用只有几 MB，适合 128MB 这类小内存 NAT 机器。
-- 续期：systemd 系统用 `sing-box-acme-renew.timer`，Alpine 用 `/etc/periodic/daily/acme-renew`（脚本会确保 crond 已启动并开机自启）。
-- 令牌保存在 `/root/.secrets/cloudflare.ini` 和 acme.sh 自己的账户文件里，权限均为仅 root 可读。不再需要时请自行删除并在 Cloudflare 撤销令牌。
-- 默认从 acme.sh 的 `master` 分支下载。需要固定版本时，运行前设置 `ACME_SH_URL` 指向指定版本的源码压缩包。
-- 签发失败时先确认令牌权限、域名确实在该 Cloudflare 账户下，再重跑脚本。
+1. 安装脚本选择 HY2 + Let’s Encrypt，并提供自定义域名和 Cloudflare API 令牌。
+2. 如果没有可复用的有效证书，脚本调用 acme.sh，向 Let’s Encrypt 申请这个域名的证书。
+3. Let’s Encrypt 发起一次 DNS-01 挑战，要求在指定名称下发布本次挑战对应的 TXT 内容，例如 _acme-challenge.hy2.example.com。
+4. acme.sh 按 ACME 规则计算 TXT 值，通过 Cloudflare API 添加记录。脚本设置的 --dnssleep 30 会在验证前等待 30 秒，让 DNS 记录有时间传播。
+5. Let’s Encrypt 查询 TXT 记录并检查内容。匹配后，说明申请方当时能够控制该域名的 DNS，Let’s Encrypt 随后签发证书。验证结束后，acme.sh 通常会清理挑战记录。
+6. 之后用户端连接 VPS 时，VPS 在 TLS 握手中发送证书链，并证明自己持有对应的私钥。用户端在本地检查证书链是否能追溯到自己信任的 CA、证书是否有效，以及证书上的域名是否匹配配置的 SNI。
+7. 检查通过后，用户端和 VPS 建立加密连接。这证明连接对端持有一张适用于该域名的有效证书，不代表 VPS 本身没有恶意软件或其他风险。
 
 ## 关闭 SSH 密码登录（可选，脚本不会自动做）
 
