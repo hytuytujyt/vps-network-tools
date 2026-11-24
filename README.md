@@ -1,13 +1,11 @@
 # REALITY / Shadowsocks / HY2 一键安装
 
-sing-box 节点安装脚本，root 交互式执行。结束时终端打印的内容就是客户端配置。
+sing-box 节点安装脚本，root 交互式执行，取消则不做任何修改。
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hytuytujyt/vps-network-tools/main/install_reality.sh -o /tmp/install_reality.sh
 sh /tmp/install_reality.sh
 ```
-
-取消则不做任何修改。
 
 ## 端口规则
 
