@@ -27,17 +27,7 @@ HY2 端口：
 shownode
 ```
 
-`shownode` 按当前服务端配置列出可以导出的 VLESS、Shadowsocks、HY2 出站片段。若当前终端仍使用旧别名，重新登录，或直接执行 `/usr/local/bin/shownode`。
-
-旧节点的公网地址和映射端口不一定能从服务端配置恢复。`shownode` 会复用能匹配的旧客户端配置；缺少资料时在 stderr 提示，不猜地址或端口。若已经有可用的客户端 JSON，可以绑定到当前入站：
-
-```sh
-shownode --import reality-in /root/old-client.json
-# 同类型出站有多个时，在文件路径后加客户端的出站 tag：
-shownode --import argo-in /root/old-client.json 'Argo 节点名'
-```
-
-`/etc/sing-box/node_output.txt` 和 `client.json` 仍是最近一次安装的输出及客户端配置。`client-reality.json` / `client-ss.json` / `client-hy2.json` 只更新本次所选协议的文件。导出包含客户端连接凭据，请勿公开。
+`shownode` 按当前服务端配置列出可以导出的 VLESS、Shadowsocks、HY2 出站片段。
 
 ### HY2 安装检查
 
