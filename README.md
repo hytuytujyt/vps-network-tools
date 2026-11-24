@@ -7,7 +7,7 @@ curl -fsSL https://raw.githubusercontent.com/hytuytujyt/vps-network-tools/main/i
 sh /tmp/install_reality.sh
 ```
 
-脚本会依次询问配置，回车使用方括号里的默认值。最后显示配置摘要，确认后才开始安装；取消则不做任何修改。脚本需要在终端中运行。
+取消则不做任何修改。
 
 ## 端口规则
 
@@ -76,15 +76,7 @@ closepwd
 
 ## 注意事项
 
-- **只替换本次所选协议中标签完全相同的入站；找不到同名标签就追加。** 服务端 `/etc/sing-box/config.json` 的 `inbounds` 标签分别是 VLESS/REALITY `hytvless`、Shadowsocks `hytss`、HY2 `hythy2`，不是客户端显示名。例如模式 `3` 只替换 `hythy2`，不会修改 `hytvless`、`hytss`、`argo-in` 或其他入站；模式 `4` 同时处理 `hytvless` 和 `hythy2`。本次重装的节点会重新生成凭据；保留的节点凭据不变，但重启 sing-box 会短暂中断现有连接。
-- 旧版标签（如 `reality-in`、`ss-in`、`hy2-in`）不会被自动删除或改名。若要让新版接管对应节点，请先备份并手动迁移入站标签以及自定义配置中对该标签的引用；否则新旧节点需要使用不冲突的监听地址和端口。
-- HY2 默认使用自签证书并内嵌客户端，无需域名或 Cloudflare API；有效期 36 个月，同 SNI 重装会复用，替换下的旧证书留在 `/etc/sing-box/hy2-tls/`。需要受信任证书时选 Let's Encrypt，见上文。客户端不支持 gecko 混淆时，重跑时选择 `2` salamander 并使用新配置。
-- 默认最低核心版本为 **1.12.0**；HY2 需要支持 QUIC 的核心，选择 Gecko 时最低版本升为 **1.14.0**。没有核心或版本过低时先暂存最新稳定版；用选中的核心检查服务端和客户端配置，通过后才替换正式核心、应用网络规则和重启服务。已有核心通过版本门槛但不支持所选功能时，脚本报错停止，不会替换核心。预检不验证公网连通性或端口跳跃。
-- 查询核心最新版本时优先用 GitHub Releases API，失败时改从公开发布页的最终跳转地址读取稳定版本号，无需 token。
-- 已存在的 `/etc/systemd/system/sing-box.service` 会备份为 `sing-box.service.pre-installer`（仅一次）。
+- 客户端不支持 gecko 混淆时，重跑时选择 `2` salamander 并使用新配置。
+- 默认最低核心版本为 **1.12.0**；HY2 需要支持 QUIC 的核心，选择 Gecko 时最低版本升为 **1.14.0**。
 - 每次重装前会备份服务端配置为 `config.json.bak.*`（含全部节点凭据，权限 600），只保留最近 3 份。
-- 本机转发需要 nftables、CAP_NET_ADMIN 和 systemd/OpenRC；检测到旧版网络集成状态时脚本会停止并提示人工检查。
-- 云安全组需自行放行。不要为安装删除已有网络规则或 SSH 端口映射。
-- 修改跳跃范围或跳跃处理方式前先断开客户端，否则旧连接可能沿用旧转发。
-- **本机转发的端到端验证尚未完成**（已通过语法、配置生成与规范化回归测试）；SSH 关闭功能也未在 Linux VPS 上实测。请在可救援的机器上先测试。
-- **acme.sh 证书流程尚未在真机上端到端验证**（改自原 certbot 流程，修改时未在 Linux 环境做过语法检查或实际运行）。请先在可重装的机器上试一次；NAT 机器选 HY2 跳跃时请选“外部 NAT 映射”。
+- 云安全组需自行放行。
