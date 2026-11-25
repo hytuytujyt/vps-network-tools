@@ -585,9 +585,18 @@ merge_candidate() {
   if [[ -e "$CONFIG_FILE" ]]; then
     jq --argjson nodes "$nodes" '
       .inbounds = ((.inbounds // [] | map(select(.tag as $tag | any($nodes[]; .tag == $tag) | not))) + $nodes)
+      | .route = (.route // {})
+      | if (.route | type) != "object" then error("route must be an object") else . end
+      | .route.rules = (
+          [{action:"sniff"},{action:"reject",ip_is_private:true}]
+          + [(.route.rules // [])[] | select(
+              ((.action // "") != "sniff") and
+              (((.action // "") != "reject") or ((.ip_is_private // false) != true))
+            )]
+        )
     ' "$CONFIG_FILE" > "$target" || return 1
   else
-    jq -n --argjson nodes "$nodes" '{log:{level:"warn",output:"/var/log/sing-box.log",timestamp:true},inbounds:$nodes,outbounds:[{type:"direct",tag:"direct"}]}' > "$target" || return 1
+    jq -n --argjson nodes "$nodes" '{log:{level:"warn",output:"/var/log/sing-box.log",timestamp:true},inbounds:$nodes,outbounds:[{type:"direct",tag:"direct"}],route:{rules:[{action:"sniff"},{action:"reject",ip_is_private:true}]}}' > "$target" || return 1
   fi
   chmod 600 "$target"
   "$BIN" check -c "$target"
