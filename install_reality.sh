@@ -298,7 +298,7 @@ generate_credentials() {
   PUBLIC_KEY=$(printf '%s\n' "$keys" | awk '/^PublicKey:/{print $2}')
   [[ -n "$PRIVATE_KEY" && -n "$PUBLIC_KEY" ]] || { fail 'Cannot parse Reality keypair'; return 1; }
   UUID=$("$BIN" generate uuid) || return 1
-  SHORT_ID=$("$BIN" generate rand 16 --hex) || return 1
+  SHORT_ID=$("$BIN" generate rand 8 --hex) || return 1
 }
 
 generate_ss_credentials() {
