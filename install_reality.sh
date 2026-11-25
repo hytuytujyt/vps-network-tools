@@ -198,8 +198,24 @@ read_core_version() {
   awk '/^sing-box version/ {print $3; found=1; exit} END {if (!found) exit 1}' <<< "$output"
 }
 
+
+download_verified_core() {
+  local version="$1" asset="$2" api digest url file
+  api="https://api.github.com/repos/SagerNet/sing-box/releases/tags/v$version"
+  digest=$(curl -fsSL --connect-timeout 10 -m 30 "$api" 2>/dev/null | jq -er --arg name "$asset" '[.assets[] | select(.name==$name) | .digest | select(type=="string" and test("^sha256:[0-9a-f]{64}$"))][0] | ltrimstr("sha256:")') || {
+    fail "No SHA-256 release digest published for sing-box asset $asset"; return 1;
+  }
+  url="https://github.com/SagerNet/sing-box/releases/download/v$version/$asset"
+  file="$CORE_STAGE_DIR/$asset"
+  robust_download "$url" "$file" || return 1
+  printf '%s  %s\n' "$digest" "$file" | sha256sum -c - >/dev/null || {
+    rm -f "$file"; fail "sing-box SHA-256 verification failed for $asset"; return 1;
+  }
+}
+
 stage_singbox() {
   local need arch version tarball binfile have
+  _cmd sha256sum || install_packages coreutils || { fail 'sha256sum is required to verify sing-box downloads'; return 1; }
   need=$(required_core_version) || return 1
   if [[ -n "${BIN:-}" ]]; then
     have=$(read_core_version "$BIN" 2>/dev/null) || have=''
@@ -219,9 +235,10 @@ stage_singbox() {
   mkdir -p /var/tmp || return 1
   CORE_STAGE_DIR=$(mktemp -d /var/tmp/singbox-install.XXXXXX) || return 1
   tarball="sing-box-$version-linux-$arch-musl.tar.gz"
-  if ! robust_download "https://github.com/SagerNet/sing-box/releases/download/v$version/$tarball" "$CORE_STAGE_DIR/$tarball"; then
+  if ! download_verified_core "$version" "$tarball"; then
+    rm -f "$CORE_STAGE_DIR/$tarball"
     tarball="sing-box-$version-linux-$arch.tar.gz"
-    robust_download "https://github.com/SagerNet/sing-box/releases/download/v$version/$tarball" "$CORE_STAGE_DIR/$tarball" || return 1
+    download_verified_core "$version" "$tarball" || return 1
   fi
   gzip -t "$CORE_STAGE_DIR/$tarball" && tar -xzf "$CORE_STAGE_DIR/$tarball" -C "$CORE_STAGE_DIR" || return 1
   # Drop the archive right away: on small machines /var/tmp may be RAM-backed.
@@ -281,7 +298,7 @@ generate_credentials() {
   PUBLIC_KEY=$(printf '%s\n' "$keys" | awk '/^PublicKey:/{print $2}')
   [[ -n "$PRIVATE_KEY" && -n "$PUBLIC_KEY" ]] || { fail 'Cannot parse Reality keypair'; return 1; }
   UUID=$("$BIN" generate uuid) || return 1
-  SHORT_ID=$("$BIN" generate rand 8 --hex) || return 1
+  SHORT_ID=$("$BIN" generate rand 16 --hex) || return 1
 }
 
 generate_ss_credentials() {
@@ -320,14 +337,24 @@ install_acme_tools() {
   ACMESH_HOME="${ACMESH_HOME:-/root/.acme.sh}"
   ACMESH_BIN="$ACMESH_HOME/acme.sh"
   ACME_RELOAD_HOOK=/usr/local/libexec/vps-network-tools/reload-sing-box.sh
-  local dir url
+  local dir url sha
   _cmd openssl || install_packages openssl
   _cmd tar || install_packages tar
+  _cmd sha256sum || { fail 'sha256sum is required to verify acme.sh'; return 1; }
   [[ -x "$ACMESH_BIN" ]] && return 0
   dir=$(mktemp -d "$WORK_DIR/acme-src.XXXXXX") || return 1
-  # Override ACME_SH_URL to pin a release tarball instead of following master.
-  url="${ACME_SH_URL:-https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.tar.gz}"
+  # Pin a tagged release and verify its archive before extracting or executing it.
+  # If overriding the URL, an explicit matching ACME_SH_SHA256 is also required.
+  if [[ -n "${ACME_SH_URL:-}" ]]; then
+    url=$ACME_SH_URL
+    sha="${ACME_SH_SHA256:-}"
+    [[ "$sha" =~ ^[0-9a-fA-F]{64}$ ]] || { fail 'Custom ACME_SH_URL requires a 64-character ACME_SH_SHA256'; return 1; }
+  else
+    url='https://github.com/acmesh-official/acme.sh/archive/refs/tags/3.1.7.tar.gz'
+    sha='1b674f31aab8844e0ed770d4a5907a777d259f58b476c5f9334cc846832081e7'
+  fi
   robust_download "$url" "$dir/acme.tar.gz" || { fail 'Cannot download acme.sh'; return 1; }
+  printf '%s  %s\n' "$sha" "$dir/acme.tar.gz" | sha256sum -c - >/dev/null || { fail 'acme.sh SHA-256 verification failed'; return 1; }
   tar -xzf "$dir/acme.tar.gz" -C "$dir" --strip-components=1 || { fail 'Cannot unpack acme.sh'; return 1; }
   # Our own timer/cron entry handles renewal, so acme.sh must not touch crontab or shell profiles.
   (cd "$dir" && sh ./acme.sh --install --home "$ACMESH_HOME" --nocron --noprofile --accountemail "$ACME_EMAIL") ||
