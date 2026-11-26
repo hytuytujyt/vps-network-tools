@@ -40,13 +40,13 @@ hy2 on      # 恢复 HY2
 
 ### 安装检查
 
-诊断路径会打印在终端，默认在 `/etc/sing-box/install-diagnostics.*`。
-
-本机协议自检默认关闭，需要时在运行前加环境变量，会测试本机 握手、认证、转发和外网 HTTPS。它不能确认手机能否从公网连进来：
+自检默认关闭。加入SELF_CHECK=1开启自检。自检从 VPS 本机发起，检查节点能否连通并访问外网 HTTPS；手机能否从公网连入，需用手机实测。
 
 ```sh
 SELF_CHECK=1 sh /tmp/install_reality.sh
 ```
+
+诊断路径会打印在终端，默认在 `/etc/sing-box/install-diagnostics.*`。
 
 ## Let's Encrypt 证书（HY2，推荐）
 
