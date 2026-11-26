@@ -40,7 +40,7 @@ hy2 on      # 恢复 HY2
 
 ### 安装检查
 
-自检默认关闭。加入SELF_CHECK=1开启自检。自检从 VPS 本机发起，检查节点能否连通并访问外网 HTTPS；手机能否从公网连入，需用手机实测。
+自检默认关闭。SELF_CHECK=1 代表开启自检。自检从 VPS 本机发起，检查节点能否连通并访问外网 HTTPS；手机能否从公网连入，需用手机实测。
 
 ```sh
 SELF_CHECK=1 sh /tmp/install_reality.sh
