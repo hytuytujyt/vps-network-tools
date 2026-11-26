@@ -38,11 +38,11 @@ hy2 on      # 恢复 HY2
 
 新版安装时自动添加命令。已装节点可用新版脚本执行 `sh /tmp/install_reality.sh --install-switches`，不必重装。需 root 和 nftables 权限。开机会尝试恢复关闭状态；如果恢复失败或防火墙重载清空规则，节点可能重新可访问，请用 `status` 检查。
 
-### HY2 安装检查
+### 安装检查
 
 诊断路径会打印在终端，默认在 `/etc/sing-box/install-diagnostics.*`。
 
-本机协议自检默认关闭，需要时在运行前加环境变量：
+本机协议自检默认关闭，需要时在运行前加环境变量，会测试本机 握手、认证、转发和外网 HTTPS。它不能确认手机能否从公网连进来：
 
 ```sh
 SELF_CHECK=1 sh /tmp/install_reality.sh
